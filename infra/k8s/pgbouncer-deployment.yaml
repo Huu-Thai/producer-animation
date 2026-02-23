@@ -1,0 +1,107 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgbouncer-config
+  namespace: producer-animation
+data:
+  pgbouncer.ini: |
+    [databases]
+    producer_animation = host=postgres-service port=5432 dbname=producer_animation
+
+    [pgbouncer]
+    listen_port = 5432
+    listen_addr = *
+    auth_type = md5
+    auth_file = /etc/pgbouncer/userlist.txt
+    pool_mode = transaction
+    max_client_conn = 1000
+    default_pool_size = 25
+    reserve_pool_size = 5
+    reserve_pool_timeout = 3
+    server_idle_timeout = 600
+    client_idle_timeout = 0
+    log_connections = 0
+    log_disconnections = 0
+    stats_period = 60
+    ignore_startup_parameters = extra_float_digits,options
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbouncer
+  namespace: producer-animation
+  labels:
+    app: pgbouncer
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: pgbouncer
+  template:
+    metadata:
+      labels:
+        app: pgbouncer
+    spec:
+      containers:
+        - name: pgbouncer
+          image: bitnami/pgbouncer:1.23.1
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRESQL_HOST
+              value: "postgres-service"
+            - name: POSTGRESQL_PORT
+              value: "5432"
+            - name: POSTGRESQL_DATABASE
+              value: "producer_animation"
+            - name: PGBOUNCER_POOL_MODE
+              value: "transaction"
+            - name: PGBOUNCER_MAX_CLIENT_CONN
+              value: "1000"
+            - name: PGBOUNCER_DEFAULT_POOL_SIZE
+              value: "25"
+            - name: POSTGRESQL_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: producer-animation-secrets
+                  key: DB_USER
+            - name: POSTGRESQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: producer-animation-secrets
+                  key: DB_PASSWORD
+          readinessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgbouncer-service
+  namespace: producer-animation
+spec:
+  selector:
+    app: pgbouncer
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pgbouncer-pdb
+  namespace: producer-animation
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: pgbouncer

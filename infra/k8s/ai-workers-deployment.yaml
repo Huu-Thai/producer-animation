@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-workers
+  namespace: producer-animation
+  labels:
+    app: ai-workers
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ai-workers
+  template:
+    metadata:
+      labels:
+        app: ai-workers
+    spec:
+      tolerations:
+        - key: "nvidia.com/gpu"
+          operator: "Exists"
+          effect: "NoSchedule"
+      nodeSelector:
+        accelerator: nvidia-gpu
+      containers:
+        - name: ai-workers
+          image: ghcr.io/your-org/producer-animation-ai-workers:latest
+          command: ["celery", "-A", "celery_app", "worker", "--loglevel=info", "-Q", "image,motion,voice,render,publish"]
+          envFrom:
+            - configMapRef:
+                name: producer-animation-config
+            - secretRef:
+                name: producer-animation-secrets
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "1000m"
+              nvidia.com/gpu: "1"
+            limits:
+              memory: "8Gi"
+              cpu: "4000m"
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            - name: tmp-storage
+              mountPath: /tmp/worker
+      volumes:
+        - name: tmp-storage
+          emptyDir:
+            sizeLimit: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-beat
+  namespace: producer-animation
+  labels:
+    app: celery-beat
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: celery-beat
+  template:
+    metadata:
+      labels:
+        app: celery-beat
+    spec:
+      containers:
+        - name: celery-beat
+          image: ghcr.io/your-org/producer-animation-ai-workers:latest
+          command: ["celery", "-A", "celery_app", "beat", "--loglevel=info"]
+          envFrom:
+            - configMapRef:
+                name: producer-animation-config
+            - secretRef:
+                name: producer-animation-secrets
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flower
+  namespace: producer-animation
+  labels:
+    app: flower
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flower
+  template:
+    metadata:
+      labels:
+        app: flower
+    spec:
+      containers:
+        - name: flower
+          image: ghcr.io/your-org/producer-animation-ai-workers:latest
+          command: ["celery", "-A", "celery_app", "flower", "--port=5555"]
+          ports:
+            - containerPort: 5555
+          envFrom:
+            - configMapRef:
+                name: producer-animation-config
+            - secretRef:
+                name: producer-animation-secrets
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flower-service
+  namespace: producer-animation
+spec:
+  selector:
+    app: flower
+  ports:
+    - port: 5555
+      targetPort: 5555

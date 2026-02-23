@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workflow-engine
+  namespace: producer-animation
+  labels:
+    app: workflow-engine
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: workflow-engine
+  template:
+    metadata:
+      labels:
+        app: workflow-engine
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3002"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: workflow-engine
+          image: ghcr.io/your-org/producer-animation-workflow-engine:latest
+          ports:
+            - containerPort: 3002
+          envFrom:
+            - configMapRef:
+                name: producer-animation-config
+            - secretRef:
+                name: producer-animation-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3002
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3002
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: workflow-engine-service
+  namespace: producer-animation
+spec:
+  selector:
+    app: workflow-engine
+  ports:
+    - port: 3002
+      targetPort: 3002
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: workflow-engine-pdb
+  namespace: producer-animation
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: workflow-engine

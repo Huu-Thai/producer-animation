@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-gateway
+  namespace: producer-animation
+  labels:
+    app: ai-gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ai-gateway
+  template:
+    metadata:
+      labels:
+        app: ai-gateway
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3003"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: ai-gateway
+          image: ghcr.io/your-org/producer-animation-ai-gateway:latest
+          ports:
+            - containerPort: 3003
+          envFrom:
+            - configMapRef:
+                name: producer-animation-config
+            - secretRef:
+                name: producer-animation-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3003
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3003
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-gateway-service
+  namespace: producer-animation
+spec:
+  selector:
+    app: ai-gateway
+  ports:
+    - port: 3003
+      targetPort: 3003

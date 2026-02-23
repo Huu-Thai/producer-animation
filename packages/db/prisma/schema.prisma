@@ -1,0 +1,204 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector", schema: "public"), pgcrypto]
+}
+
+model User {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email            String    @unique
+  passwordHash     String    @map("password_hash")
+  name             String?
+  refreshTokenHash String?   @map("refresh_token_hash")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime? @updatedAt @map("updated_at") @db.Timestamptz
+
+  series Series[]
+
+  @@map("users")
+}
+
+model Series {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String    @db.VarChar(255)
+  description     String?   @db.Text
+  genre           String?   @db.VarChar(100)
+  artStyle        String?   @map("art_style") @db.VarChar(100)
+  defaultLanguage String    @default("en") @map("default_language") @db.VarChar(5)
+  createdBy       String    @map("created_by") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime? @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz
+
+  creator    User        @relation(fields: [createdBy], references: [id])
+  sessions   Session[]
+  episodes   Episode[]
+  characters Character[]
+  channels   Channel[]
+  assets     SeriesAsset[]
+
+  @@map("series")
+}
+
+model Session {
+  id            String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  seriesId      String                      @map("series_id") @db.Uuid
+  name          String?                     @db.VarChar(255)
+  globalContext Json?                       @map("global_context")
+  memorySummary String?                     @map("memory_summary") @db.Text
+  embedding     Unsupported("vector(1536)")?
+  createdAt     DateTime                    @default(now()) @map("created_at") @db.Timestamptz
+
+  series   Series    @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  episodes Episode[]
+
+  @@map("sessions")
+}
+
+model Episode {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  seriesId        String    @map("series_id") @db.Uuid
+  sessionId       String?   @map("session_id") @db.Uuid
+  title           String?   @db.VarChar(255)
+  synopsis        String?   @db.Text
+  language        String    @default("en") @db.VarChar(5)
+  durationTarget  Int?      @map("duration_target")
+  status          String    @default("draft") @db.VarChar(20)
+  workflowVersion Int       @default(1) @map("workflow_version")
+  workflow        Json?     @map("workflow")
+  finalVideoUrl   String?   @map("final_video_url") @db.Text
+  thumbnailUrl    String?   @map("thumbnail_url") @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime? @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz
+
+  series       Series              @relation(fields: [seriesId], references: [id])
+  session      Session?            @relation(fields: [sessionId], references: [id])
+  scripts      Script[]
+  nodeRuns     NodeRun[]
+  publications EpisodePublication[]
+
+  @@map("episodes")
+}
+
+model Script {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  episodeId  String    @map("episode_id") @db.Uuid
+  rawScript  String    @map("raw_script") @db.Text
+  parsedJson Json?     @map("parsed_json")
+  language   String?   @db.VarChar(5)
+  version    Int       @default(1)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@map("scripts")
+}
+
+model Character {
+  id                String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  seriesId          String                      @map("series_id") @db.Uuid
+  name              String                      @db.VarChar(255)
+  personalityPrompt String?                     @map("personality_prompt") @db.Text
+  visualPrompt      String?                     @map("visual_prompt") @db.Text
+  voiceId           String?                     @map("voice_id") @db.VarChar(255)
+  embedding         Unsupported("vector(1536)")?
+  createdAt         DateTime                    @default(now()) @map("created_at") @db.Timestamptz
+  deletedAt         DateTime?                   @map("deleted_at") @db.Timestamptz
+
+  series Series @relation(fields: [seriesId], references: [id])
+
+  @@map("characters")
+}
+
+model Asset {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type       String    @db.VarChar(50)
+  storageKey String    @map("storage_key") @db.Text
+  metadata   Json?
+  reusable   Boolean   @default(true)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz
+
+  seriesAssets SeriesAsset[]
+
+  @@map("assets")
+}
+
+model SeriesAsset {
+  seriesId  String   @map("series_id") @db.Uuid
+  assetId   String   @map("asset_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  series Series @relation(fields: [seriesId], references: [id])
+  asset  Asset  @relation(fields: [assetId], references: [id])
+
+  @@id([seriesId, assetId])
+  @@map("series_assets")
+}
+
+model Channel {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  seriesId  String    @map("series_id") @db.Uuid
+  platform  String    @default("youtube") @db.VarChar(50)
+  name      String?   @db.VarChar(255)
+  config    Json
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  series       Series               @relation(fields: [seriesId], references: [id])
+  publications EpisodePublication[]
+
+  @@map("channels")
+}
+
+model EpisodePublication {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  episodeId       String    @map("episode_id") @db.Uuid
+  channelId       String    @map("channel_id") @db.Uuid
+  platformVideoId String?   @map("platform_video_id") @db.VarChar(255)
+  status          String    @default("pending") @db.VarChar(20)
+  publishedAt     DateTime? @map("published_at") @db.Timestamptz
+  metadata        Json?
+
+  episode Episode @relation(fields: [episodeId], references: [id])
+  channel Channel @relation(fields: [channelId], references: [id])
+
+  @@map("episode_publications")
+}
+
+model VoiceCache {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  voiceId   String   @map("voice_id") @db.VarChar(255)
+  textHash  String   @map("text_hash") @db.VarChar(64)
+  audioUrl  String   @map("audio_url") @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@unique([voiceId, textHash])
+  @@map("voice_cache")
+}
+
+model NodeRun {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  episodeId   String    @map("episode_id") @db.Uuid
+  nodeId      String    @map("node_id") @db.VarChar(255)
+  nodeType    String    @map("node_type") @db.VarChar(50)
+  status      String    @default("pending") @db.VarChar(20)
+  config      Json?
+  input       Json?
+  output      Json?
+  error       String?   @db.Text
+  attempts    Int       @default(0)
+  startedAt   DateTime? @map("started_at") @db.Timestamptz
+  completedAt DateTime? @map("completed_at") @db.Timestamptz
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  episode Episode @relation(fields: [episodeId], references: [id])
+
+  @@unique([episodeId, nodeId], name: "episodeId_nodeId")
+  @@map("node_runs")
+}

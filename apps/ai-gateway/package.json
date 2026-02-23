@@ -1,0 +1,29 @@
+{
+  "name": "@producer/ai-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "start:prod": "node dist/main"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.36.0",
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "@producer/shared-types": "workspace:*",
+    "axios": "^1.7.0",
+    "nestjs-pino": "^4.0.0",
+    "pino-http": "^10.0.0",
+    "reflect-metadata": "^0.2.0",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/schematics": "^11.0.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,98 @@
+groups:
+  - name: producer-animation-alerts
+    interval: 30s
+    rules:
+      # DLQ depth alert
+      - alert: DLQJobsPresent
+        expr: bullmq_queue_failed_total{queue="workflow:dlq"} > 0
+        for: 1m
+        labels:
+          severity: warning
+          channel: slack
+        annotations:
+          summary: "DLQ has {{ $value }} failed jobs"
+          description: "Dead letter queue has jobs that need manual replay"
+          runbook_url: "https://wiki.your-domain.com/runbooks/dlq-replay"
+
+      # Episode failure rate
+      - alert: HighEpisodeFailureRate
+        expr: |
+          rate(episode_status_transitions_total{to="failed"}[5m]) /
+          rate(episode_status_transitions_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          channel: pagerduty
+        annotations:
+          summary: "Episode failure rate is {{ $value | humanizePercentage }}"
+          description: "More than 5% of episodes are failing"
+
+      # AI provider errors
+      - alert: HighAIProviderErrorRate
+        expr: |
+          rate(ai_provider_errors_total[5m]) /
+          rate(ai_provider_requests_total[5m]) > 0.10
+        for: 5m
+        labels:
+          severity: warning
+          channel: slack
+        annotations:
+          summary: "AI provider {{ $labels.provider }} error rate is {{ $value | humanizePercentage }}"
+          description: "AI provider error rate exceeds 10% threshold"
+
+      # Queue depth alert
+      - alert: HighQueueDepth
+        expr: bullmq_queue_waiting_total > 50
+        for: 5m
+        labels:
+          severity: warning
+          channel: slack
+        annotations:
+          summary: "Queue {{ $labels.queue }} has {{ $value }} waiting jobs"
+          description: "High queue depth may indicate processing backlog"
+
+      # GPU worker memory
+      - alert: GPUWorkerHighMemory
+        expr: |
+          container_memory_usage_bytes{namespace="producer-animation", container="ai-workers"} /
+          container_spec_memory_limit_bytes{namespace="producer-animation", container="ai-workers"} > 0.90
+        for: 2m
+        labels:
+          severity: warning
+          channel: slack
+        annotations:
+          summary: "GPU worker memory usage is {{ $value | humanizePercentage }}"
+          description: "GPU worker pod approaching memory limit, may OOM soon"
+
+      # API response time
+      - alert: SlowAPIResponse
+        expr: histogram_quantile(0.95, rate(http_request_duration_ms_bucket{app="api"}[5m])) > 200
+        for: 5m
+        labels:
+          severity: warning
+          channel: slack
+        annotations:
+          summary: "API p95 latency is {{ $value }}ms"
+          description: "API response time exceeds 200ms p95 target"
+
+      # Service down
+      - alert: ServiceDown
+        expr: up{job=~"api|workflow-engine|ai-gateway"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          channel: pagerduty
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "Service has been unreachable for more than 1 minute"
+
+      # Circuit breaker open
+      - alert: CircuitBreakerOpen
+        expr: ai_circuit_breaker_state{state="open"} == 1
+        for: 30s
+        labels:
+          severity: warning
+          channel: slack
+        annotations:
+          summary: "Circuit breaker open for provider {{ $labels.provider }}"
+          description: "AI provider {{ $labels.provider }} circuit breaker is open after 3 consecutive failures"
